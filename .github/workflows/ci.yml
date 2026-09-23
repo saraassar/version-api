@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      sha_short: ${{ steps.meta.outputs.sha_short }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,3 +39,25 @@ jobs:
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.sha_short }}
             BUILD_TIME=${{ steps.meta.outputs.build_time }}
+
+  update-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout manifests repo
+        uses: actions/checkout@v4
+        with:
+          repository: saraassar/version-api-helm-chart
+          token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+
+      - name: Bump image tag
+        run: |
+          yq -i '.image.tag = "${{ needs.build-and-push.outputs.sha_short }}"' values.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git add values.yaml
+          git commit -m "chore: bump image tag to ${{ needs.build-and-push.outputs.sha_short }}"
+          git push
